@@ -4,11 +4,15 @@ import logging
 import re
 import subprocess
 import concurrent.futures
+import threading
 from typing import Optional
 
 from config import CLAUDE_MODEL, TIMEOUT_MODEL
 
 logger = logging.getLogger(__name__)
+
+# 限制同时运行的 Claude 进程数，避免并发过高导致空输出
+_CLAUDE_SEM = threading.Semaphore(2)
 
 # ── Prompt 模板 ───────────────────────────────────────────
 
@@ -128,21 +132,22 @@ def _build_prompt(module: str, data: dict) -> str:
 
 
 def _call_claude(prompt: str) -> dict:
-    """调用 claude -p CLI。"""
-    try:
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--model", CLAUDE_MODEL],
-            capture_output=True, text=True, timeout=TIMEOUT_MODEL,
-        )
-        if result.returncode != 0:
-            logger.warning("Claude CLI 返回非零: %s", result.stderr[:200])
-        return _extract_json(result.stdout) or {"error": result.stderr[:200] or "无输出"}
-    except subprocess.TimeoutExpired:
-        logger.error("Claude 调用超时（%ds）", TIMEOUT_MODEL)
-        return {"error": f"超时（{TIMEOUT_MODEL}s）"}
-    except Exception as e:
-        logger.error("Claude 调用异常: %s", e)
-        return {"error": str(e)}
+    """调用 claude -p CLI（信号量限制最多 2 个并发进程）。"""
+    with _CLAUDE_SEM:
+        try:
+            result = subprocess.run(
+                ["claude", "-p", prompt, "--model", CLAUDE_MODEL],
+                capture_output=True, text=True, timeout=TIMEOUT_MODEL,
+            )
+            if result.returncode != 0:
+                logger.warning("Claude CLI 返回非零: %s", result.stderr[:200])
+            return _extract_json(result.stdout) or {"error": result.stderr[:200] or "无输出"}
+        except subprocess.TimeoutExpired:
+            logger.error("Claude 调用超时（%ds）", TIMEOUT_MODEL)
+            return {"error": f"超时（{TIMEOUT_MODEL}s）"}
+        except Exception as e:
+            logger.error("Claude 调用异常: %s", e)
+            return {"error": str(e)}
 
 
 def _call_gpt(prompt: str) -> dict:
