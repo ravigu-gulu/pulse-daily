@@ -87,7 +87,8 @@ def _parse_html(html: str, period: str) -> list:
                 "period":      period,
                 "category":    _categorize(full_name + " " + desc + " " + language),
             })
-        except Exception:
+        except Exception as exc:
+            logger.debug("  GitHub repo 解析失败: %s", exc)
             continue
     return items
 

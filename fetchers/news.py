@@ -1,13 +1,10 @@
 """国际新闻 RSS 抓取 + 去重过滤。"""
 import hashlib
 import logging
-import time
-from datetime import datetime, timezone
 
 import feedparser
-import requests
 
-from config import NEWS_RSS, NEWS_FILTER_KEYWORDS, NEWS_SKIP_KEYWORDS, TZ_CST
+from config import NEWS_RSS, NEWS_FILTER_KEYWORDS, NEWS_SKIP_KEYWORDS
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +58,7 @@ def _sig(text: str) -> str:
 
 
 def _deduplicate(items: list) -> list:
-    """基于标题 fingerprint 去重，保留最早来源。"""
+    """基于标题 fingerprint 去重，按进入顺序保留第一条。"""
     seen = {}
     for item in items:
         sig = item["sig"]
@@ -76,11 +73,13 @@ def _deduplicate(items: list) -> list:
 
 
 def _filter(items: list) -> list:
-    """过滤娱乐/体育，保留国际要闻。"""
+    """过滤娱乐/体育；要求至少命中一个 include 关键词才保留。"""
     result = []
     for item in items:
         text = (item["title"] + " " + item["summary"]).lower()
         if any(kw.lower() in text for kw in NEWS_SKIP_KEYWORDS):
+            continue
+        if not any(kw.lower() in text for kw in NEWS_FILTER_KEYWORDS):
             continue
         result.append(item)
     return result

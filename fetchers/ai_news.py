@@ -18,9 +18,21 @@ def fetch_ai_news() -> dict:
         f_arxiv  = ex.submit(_fetch_arxiv)
         f_media  = ex.submit(_fetch_media_rss)
 
-    hn_items    = f_hn.result()
-    arxiv_items = f_arxiv.result()
-    media_items = f_media.result()
+    try:
+        hn_items = f_hn.result()
+    except Exception as e:
+        logger.warning("HN future 异常: %s", e)
+        hn_items = []
+    try:
+        arxiv_items = f_arxiv.result()
+    except Exception as e:
+        logger.warning("arxiv future 异常: %s", e)
+        arxiv_items = []
+    try:
+        media_items = f_media.result()
+    except Exception as e:
+        logger.warning("media future 异常: %s", e)
+        media_items = []
 
     logger.info("  AI新闻: HN=%d arxiv=%d media=%d",
                 len(hn_items), len(arxiv_items), len(media_items))
@@ -119,7 +131,7 @@ def _fetch_media_rss() -> list:
     seen = set()
     deduped = []
     for item in items:
-        key = item["title"][:40]
+        key = item["title"] + "|" + item.get("link", "")
         if key not in seen:
             seen.add(key)
             deduped.append(item)

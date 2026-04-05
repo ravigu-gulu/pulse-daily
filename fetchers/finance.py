@@ -1,7 +1,6 @@
 """财经数据抓取：yfinance → 标准化市场快照。"""
 import logging
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 import yfinance as yf
 
@@ -115,13 +114,15 @@ def _market_status(sym: str, now: datetime) -> str:
             return "open"
         return "closed"
 
-    # 美股（UTC-4/5，粗略判断）
+    # 美股：NYSE/NASDAQ 开盘 09:30-16:00 ET，CST = ET+13（标准时）/ET+12（夏令时）
     if sym in ["^GSPC", "^IXIC", "^DJI"]:
         if weekday >= 5:
             return "closed"
-        # CST 21:30 - 次日04:00 为美股交易时段
-        h = now.hour
-        if h >= 21 or h < 4:
+        from zoneinfo import ZoneInfo
+        now_et = now.astimezone(ZoneInfo("America/New_York"))
+        open_min  = now_et.hour * 60 + now_et.minute
+        # 09:30 = 570, 16:00 = 960
+        if 570 <= open_min < 960:
             return "open"
         return "closed"
 

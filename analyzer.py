@@ -158,6 +158,9 @@ def _call_gpt(prompt: str) -> dict:
              "-c", "sandbox_permissions=[\"disk-full-read-access\"]"],
             capture_output=True, text=True, timeout=TIMEOUT_MODEL,
         )
+        if result.returncode != 0:
+            logger.warning("GPT CLI 返回非零: %s", result.stderr[:200])
+            return {"error": result.stderr[:200] or "GPT CLI 非零退出"}
         # codex exec 在 stdout 首行输出 JSON 响应，后续行是元信息
         # 优先取 stdout 第一行（最干净的 JSON 输出）
         first_line = result.stdout.strip().split("\n")[0] if result.stdout.strip() else ""
@@ -165,7 +168,7 @@ def _call_gpt(prompt: str) -> dict:
             return json.loads(first_line)
         except json.JSONDecodeError:
             pass
-        # 回退：在全部输出中搜索最后一个合法 JSON 对象
+        # 回退：括号平衡扫描提取最后一个完整 JSON 对象
         parsed = _extract_json(result.stdout)
         if parsed:
             return parsed
@@ -180,14 +183,37 @@ def _call_gpt(prompt: str) -> dict:
 
 
 def _extract_json(text: str) -> Optional[dict]:
-    """从 stdout 中提取最后一段合法 JSON 对象。"""
+    """括号平衡扫描，提取文本中最后一个完整 JSON 对象。"""
     if not text:
         return None
-    # 找所有 {...} 块，取最后一个能解析的
-    candidates = list(re.finditer(r'\{[\s\S]*\}', text))
-    for match in reversed(candidates):
-        try:
-            return json.loads(match.group())
-        except json.JSONDecodeError:
+    last_valid = None
+    i = 0
+    while i < len(text):
+        if text[i] != "{":
+            i += 1
             continue
-    return None
+        depth, in_str, escape = 0, False, False
+        j = i
+        while j < len(text):
+            ch = text[j]
+            if escape:
+                escape = False
+            elif ch == "\\" and in_str:
+                escape = True
+            elif ch == '"':
+                in_str = not in_str
+            elif not in_str:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[i:j + 1]
+                        try:
+                            last_valid = json.loads(candidate)
+                        except json.JSONDecodeError:
+                            pass
+                        break
+            j += 1
+        i += 1
+    return last_valid

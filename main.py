@@ -14,8 +14,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from config import (REPORTS_DIR, SNAPSHOTS_DIR, TZ_CST,
-                    TIMEOUT_MODULE, TIMEOUT_GLOBAL)
+from config import (REPORTS_DIR, SNAPSHOTS_DIR, TZ_CST, TIMEOUT_GLOBAL)
 from analyzer import analyze
 from reporter import build_report
 
@@ -73,6 +72,8 @@ def do_run(today: date) -> dict:
         "github":  fetch_github,
     }
 
+    _ERR = lambda msg: {"raw": {}, "claude": {"error": msg}, "gpt": {"error": msg}}
+
     results = {}
     # 4 个模块并行
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
@@ -80,20 +81,21 @@ def do_run(today: date) -> dict:
             ex.submit(run_module, name, fn, today_snap): name
             for name, fn in modules.items()
         }
-        for future in concurrent.futures.as_completed(futures, timeout=TIMEOUT_GLOBAL):
-            name = futures[future]
-            try:
-                results[name] = future.result(timeout=TIMEOUT_MODULE)
-            except concurrent.futures.TimeoutError:
-                logger.error("[%s] 模块超时（%ds）", name, TIMEOUT_MODULE)
-                results[name] = {
-                    "raw": {}, "claude": {"error": "模块超时"}, "gpt": {"error": "模块超时"}
-                }
-            except Exception:
-                logger.exception("[%s] 模块异常", name)
-                results[name] = {
-                    "raw": {}, "claude": {"error": "模块异常"}, "gpt": {"error": "模块异常"}
-                }
+        try:
+            completed = concurrent.futures.as_completed(futures, timeout=TIMEOUT_GLOBAL)
+            for future in completed:
+                name = futures[future]
+                try:
+                    results[name] = future.result()
+                except Exception:
+                    logger.exception("[%s] 模块异常", name)
+                    results[name] = _ERR("模块异常")
+        except concurrent.futures.TimeoutError:
+            logger.error("全局超时（%ds），已完成 %d/%d 个模块",
+                         TIMEOUT_GLOBAL, len(results), len(modules))
+            for name in modules:
+                if name not in results:
+                    results[name] = _ERR("全局超时")
 
     return results
 
@@ -105,15 +107,21 @@ def do_report_only(today: date) -> dict:
         logger.error("找不到 %s 的快照，请先运行完整抓取", today)
         sys.exit(1)
 
+    def _load(path: Path, fallback: dict) -> dict:
+        if not path.exists():
+            return fallback
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("快照读取失败 %s: %s", path.name, exc)
+            return {"error": "快照损坏"}
+
     results = {}
     for name in ("finance", "news", "ai", "github"):
-        raw_f = snap_dir / f"{name}_raw.json"
-        claude_f = snap_dir / f"{name}_claude.json"
-        gpt_f    = snap_dir / f"{name}_gpt.json"
         results[name] = {
-            "raw":    json.loads(raw_f.read_text()) if raw_f.exists() else {},
-            "claude": json.loads(claude_f.read_text()) if claude_f.exists() else {"error": "无快照"},
-            "gpt":    json.loads(gpt_f.read_text()) if gpt_f.exists() else {"error": "无快照"},
+            "raw":    _load(snap_dir / f"{name}_raw.json",    {}),
+            "claude": _load(snap_dir / f"{name}_claude.json", {"error": "无快照"}),
+            "gpt":    _load(snap_dir / f"{name}_gpt.json",    {"error": "无快照"}),
         }
     return results
 
@@ -123,7 +131,7 @@ def main():
     p.add_argument("--report", action="store_true", help="仅用快照重新生成报告")
     args = p.parse_args()
 
-    today = date.today()
+    today = datetime.now(TZ_CST).date()
     REPORTS_DIR.mkdir(exist_ok=True)
     SNAPSHOTS_DIR.mkdir(exist_ok=True)
 

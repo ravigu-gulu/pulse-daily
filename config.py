@@ -9,9 +9,6 @@ TZ_CST = ZoneInfo("Asia/Shanghai")
 
 # ── AI 模型 ───────────────────────────────────────────────
 CLAUDE_MODEL = "claude-opus-4-6"
-CODEX_MODEL  = "gpt-5.4"          # codex exec default model (ChatGPT account compatible)
-CODEX_COMPANION = Path.home() / ".claude/plugins/cache/openai-codex/codex/1.0.2/scripts/codex-companion.mjs"
-
 # ── 超时（秒） ────────────────────────────────────────────
 TIMEOUT_MODEL  = 90    # 单次模型调用
 TIMEOUT_MODULE = 180   # 单模块总时间
@@ -80,7 +77,7 @@ AI_KEYWORDS  = [
 # arxiv API v1 (Atom/XML) — works on weekends unlike RSS which returns 0 on Sat/Sun
 ARXIV_CATEGORIES = ["cs.AI", "cs.LG", "cs.CL"]
 ARXIV_API_URL = (
-    "http://export.arxiv.org/api/query"
+    "https://export.arxiv.org/api/query"
     "?search_query={cat}&start=0&max_results=10"
     "&sortBy=submittedDate&sortOrder=descending"
 )

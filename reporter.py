@@ -225,7 +225,7 @@ def _github_analysis(data: dict) -> str:
     picks_html = ""
     for p in picks:
         stars = p.get("stars_today", 0)
-        rating = "⭐" * min(int(p.get("rating", 3)), 5)
+        rating = "⭐" * max(1, min(_safe_int(p.get("rating"), 3), 5))
         cat    = p.get("category", "")
         picks_html += f"""
 <div class="repo-card">
@@ -250,6 +250,13 @@ def _github_analysis(data: dict) -> str:
 
 def _e(s: str) -> str:
     return html.escape(str(s))
+
+
+def _safe_int(val, default: int = 0) -> int:
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
 
 
 def _fmt_price(price: float, currency: str) -> str:
