@@ -124,11 +124,48 @@ def _build_prompt(module: str, data: dict) -> str:
         "github":  GITHUB_PROMPT,
     }
     tmpl = templates.get(module, "")
-    data_str = json.dumps(data, ensure_ascii=False, indent=2)
-    # 截断过长数据，避免超出上下文
-    if len(data_str) > 8000:
-        data_str = data_str[:8000] + "\n...(截断)"
+    trimmed = _trim_data(module, data)
+    data_str = json.dumps(trimmed, ensure_ascii=False, indent=2)
+    # 保底截断，防止极端情况
+    if len(data_str) > 10000:
+        data_str = data_str[:10000] + "\n...(截断)"
     return tmpl.format(data=data_str)
+
+
+def _trim_data(module: str, data: dict) -> dict:
+    """按模块精简数据，确保 data_str 在合理大小内，避免截断破坏 JSON 结构。"""
+    if module == "news":
+        items = data.get("items", [])[:20]
+        return {
+            "items": [
+                {"title": i.get("title", ""),
+                 "summary": i.get("summary", "")[:150],
+                 "source": i.get("source", "")}
+                for i in items
+            ],
+            "total_raw": data.get("total_raw", 0),
+        }
+    if module == "ai":
+        return {
+            "hn": [{"title": i.get("title",""), "score": i.get("score",0)}
+                   for i in data.get("hn", [])[:10]],
+            "arxiv": [{"title": i.get("title",""), "summary": i.get("summary","")[:150]}
+                      for i in data.get("arxiv", [])[:10]],
+            "media": [{"title": i.get("title",""), "summary": i.get("summary","")[:150],
+                       "source": i.get("source","")}
+                      for i in data.get("media", [])[:10]],
+        }
+    if module == "github":
+        return {
+            "items": [
+                {"name": i.get("name",""), "description": i.get("description","")[:120],
+                 "language": i.get("language",""), "stars_today": i.get("stars_today",0),
+                 "category": i.get("category","")}
+                for i in data.get("items", [])[:20]
+            ]
+        }
+    # finance：数据量本身不大，直接返回
+    return data
 
 
 def _call_claude(prompt: str) -> dict:
@@ -183,10 +220,11 @@ def _call_gpt(prompt: str) -> dict:
 
 
 def _extract_json(text: str) -> Optional[dict]:
-    """括号平衡扫描，提取文本中最后一个完整 JSON 对象。"""
+    """括号平衡扫描，返回文本中最大的合法 JSON 对象（外层 wrapper 总比子对象大）。"""
     if not text:
         return None
-    last_valid = None
+    best: Optional[dict] = None
+    best_len = 0
     i = 0
     while i < len(text):
         if text[i] != "{":
@@ -208,12 +246,15 @@ def _extract_json(text: str) -> Optional[dict]:
                 elif ch == "}":
                     depth -= 1
                     if depth == 0:
-                        candidate = text[i:j + 1]
-                        try:
-                            last_valid = json.loads(candidate)
-                        except json.JSONDecodeError:
-                            pass
+                        span = j - i + 1
+                        if span > best_len:
+                            candidate = text[i:j + 1]
+                            try:
+                                best = json.loads(candidate)
+                                best_len = span
+                            except json.JSONDecodeError:
+                                pass
                         break
             j += 1
         i += 1
-    return last_valid
+    return best
