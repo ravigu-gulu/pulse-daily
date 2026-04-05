@@ -281,6 +281,20 @@ def _repo_cards(picks: list, stars_key: str = "stars_today", show_cat: bool = Tr
         rating = "⭐" * max(1, min(_safe_int(p.get("rating"), 3), 5))
         cat    = f'<span class="repo-cat">{_e(p.get("category",""))}</span>' if show_cat else ""
         stars_label = f"+{stars}⭐" if stars_key == "stars_today" else f"★{stars:,}"
+
+        # 兼容旧 description 字段和新 what/why/use_case 三字段
+        what     = _e(p.get("what", p.get("description", "")))
+        why      = _e(p.get("why", ""))
+        use_case = _e(p.get("use_case", ""))
+
+        detail = ""
+        if what:
+            detail += f'<div class="repo-what"><span class="repo-field-label">📌 项目内容：</span>{what}</div>'
+        if why:
+            detail += f'<div class="repo-why"><span class="repo-field-label">✨ 核心优势：</span>{why}</div>'
+        if use_case:
+            detail += f'<div class="repo-usecase"><span class="repo-field-label">🎯 适用场景：</span>{use_case}</div>'
+
         html += f"""
 <div class="repo-card">
   <div class="repo-header">
@@ -288,8 +302,8 @@ def _repo_cards(picks: list, stars_key: str = "stars_today", show_cat: bool = Tr
     {cat}
     <span class="repo-stars">{stars_label}</span>
   </div>
-  <div class="repo-desc">{_e(p.get('description',''))}</div>
-  <div class="repo-meta">{rating} · 场景：{_e(p.get('use_case',''))}</div>
+  <div class="repo-detail">{detail}</div>
+  <div class="repo-meta">{rating}</div>
 </div>"""
     return html
 
@@ -427,7 +441,9 @@ h4{{font-size:13px;font-weight:600;color:#444;margin:14px 0 6px}}
 .repo-name:hover{{text-decoration:underline}}
 .repo-cat{{font-size:11px;background:#e6f4ff;color:#0958d9;padding:1px 8px;border-radius:10px}}
 .repo-stars{{font-size:11px;color:#fa8c16;font-weight:600;margin-left:auto}}
-.repo-desc{{font-size:12px;color:#444;line-height:1.5;margin-bottom:4px}}
+.repo-detail{{margin-bottom:6px}}
+.repo-what,.repo-why,.repo-usecase{{font-size:12px;color:#444;line-height:1.6;margin-bottom:3px}}
+.repo-field-label{{font-weight:600;color:#555;margin-right:4px}}
 .repo-meta{{font-size:11px;color:#888}}
 
 /* 通用 */
