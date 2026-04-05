@@ -18,6 +18,8 @@ def build_report(results: dict, report_date: date) -> str:
         sections += _render_ai(results["ai"])
     if "github" in results:
         sections += _render_github(results["github"])
+    if "clawhub" in results:
+        sections += _render_clawhub(results["clawhub"])
 
     return HTML_TMPL.format(
         report_date=report_date.strftime("%Y年%m月%d日"),
@@ -245,6 +247,106 @@ def _render_github(data: dict) -> str:
     return _section("⭐ GitHub 开源精选", meta + trending_html + pm_html + finance_html)
 
 
+def _render_clawhub(data: dict) -> str:
+    raw    = data.get("raw", {})
+    claude = data.get("claude", {})
+    gpt    = data.get("gpt", {})
+
+    total_trending = len(raw.get("trending", []))
+    total_pm       = len(raw.get("pm_skills", []))
+    total_finance  = len(raw.get("finance_skills", []))
+    meta = (f'<p class="meta-info">最新技能 {total_trending} 个 · '
+            f'PM专项 {total_pm} 个 · 金融专项 {total_finance} 个</p>')
+
+    trending_html = _subsection(
+        "🔥 ClawHub 热门技能",
+        _dual_tab(
+            _clawhub_trending(claude.get("trending", claude) if "trending" in claude else claude),
+            _clawhub_trending(gpt.get("trending", gpt) if "trending" in gpt else gpt),
+            "clawhub_trending"
+        )
+    )
+
+    pm_html = _subsection(
+        "🧩 产品经理专项技能",
+        _dual_tab(
+            _clawhub_picks(claude.get("pm_skills", {})),
+            _clawhub_picks(gpt.get("pm_skills", {})),
+            "clawhub_pm"
+        )
+    )
+
+    finance_html = _subsection(
+        "🏦 金融行业专项技能",
+        _dual_tab(
+            _clawhub_picks(claude.get("finance_skills", {})),
+            _clawhub_picks(gpt.get("finance_skills", {})),
+            "clawhub_finance"
+        )
+    )
+
+    return _section("🤖 ClawHub 技能精选", meta + trending_html + pm_html + finance_html)
+
+
+def _clawhub_trending(data: dict) -> str:
+    if "error" in data:
+        return f'<p class="err-msg">分析失败：{_e(str(data["error"]))}</p>'
+    picks  = data.get("picks", [])
+    trend  = data.get("trend_summary", "")
+    hotdir = data.get("hot_direction", "")
+    picks_html = _skill_cards(picks)
+    return f"""
+<div class="analysis-block">
+  {picks_html}
+  <div class="summary-box"><strong>趋势：</strong>{_e(trend)}</div>
+  <div class="watch-box">🔥 最热方向：{_e(hotdir)}</div>
+</div>"""
+
+
+def _clawhub_picks(data: dict) -> str:
+    if not data or "error" in data:
+        err = data.get("error", "") if data else ""
+        return f'<p class="err-msg">分析失败：{_e(str(err))}</p>' if err else '<p class="na">暂无数据</p>'
+    picks   = data.get("picks", [])
+    summary = data.get("summary", "")
+    picks_html = _skill_cards(picks)
+    return f"""
+<div class="analysis-block">
+  {picks_html}
+  <div class="summary-box"><strong>推荐语：</strong>{_e(summary)}</div>
+</div>"""
+
+
+def _skill_cards(picks: list) -> str:
+    out = ""
+    for p in picks:
+        rating   = "⭐" * max(1, min(_safe_int(p.get("rating"), 3), 5))
+        official = ' <span class="skill-official">官方</span>' if p.get("isOfficial") else ""
+        what     = _e(p.get("what", ""))
+        why      = _e(p.get("why", ""))
+        use_case = _e(p.get("use_case", ""))
+
+        detail = ""
+        if what:
+            detail += f'<div class="repo-what"><span class="repo-field-label">📌 技能内容：</span>{what}</div>'
+        if why:
+            detail += f'<div class="repo-why"><span class="repo-field-label">✨ 核心优势：</span>{why}</div>'
+        if use_case:
+            detail += f'<div class="repo-usecase"><span class="repo-field-label">🎯 适用场景：</span>{use_case}</div>'
+
+        out += f"""
+<div class="repo-card">
+  <div class="repo-header">
+    <a href="{_e(p.get('url',''))}" target="_blank" class="repo-name">{_e(p.get('displayName', p.get('name', '')))}</a>
+    {official}
+    <span class="repo-stars">📦 {_e(p.get('name',''))}</span>
+  </div>
+  <div class="repo-detail">{detail}</div>
+  <div class="repo-meta">{rating}</div>
+</div>"""
+    return out
+
+
 def _github_trending(data: dict) -> str:
     if "error" in data:
         return f'<p class="err-msg">分析失败：{_e(str(data["error"]))}</p>'
@@ -445,6 +547,7 @@ h4{{font-size:13px;font-weight:600;color:#444;margin:14px 0 6px}}
 .repo-what,.repo-why,.repo-usecase{{font-size:12px;color:#444;line-height:1.6;margin-bottom:3px}}
 .repo-field-label{{font-weight:600;color:#555;margin-right:4px}}
 .repo-meta{{font-size:11px;color:#888}}
+.skill-official{{font-size:11px;background:#fff7e6;color:#d46b08;padding:1px 8px;border-radius:10px;border:1px solid #ffd591}}
 
 /* 通用 */
 .meta-info{{font-size:11px;color:#aaa;margin-bottom:10px}}

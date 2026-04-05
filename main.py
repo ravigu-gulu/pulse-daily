@@ -57,10 +57,11 @@ def run_module(name: str, fetch_fn, today_snap: Path) -> dict:
 
 def do_run(today: date) -> dict:
     """并行运行所有模块，返回 results 字典。"""
-    from fetchers.finance import fetch_finance
-    from fetchers.news    import fetch_news
-    from fetchers.ai_news import fetch_ai_news
-    from fetchers.github  import fetch_github
+    from fetchers.finance  import fetch_finance
+    from fetchers.news     import fetch_news
+    from fetchers.ai_news  import fetch_ai_news
+    from fetchers.github   import fetch_github
+    from fetchers.clawhub  import fetch_clawhub
 
     today_snap = SNAPSHOTS_DIR / today.strftime("%Y-%m-%d")
     today_snap.mkdir(parents=True, exist_ok=True)
@@ -70,13 +71,14 @@ def do_run(today: date) -> dict:
         "news":    fetch_news,
         "ai":      fetch_ai_news,
         "github":  fetch_github,
+        "clawhub": fetch_clawhub,
     }
 
     _ERR = lambda msg: {"raw": {}, "claude": {"error": msg}, "gpt": {"error": msg}}
 
     results = {}
     # 4 个模块并行
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
         futures = {
             ex.submit(run_module, name, fn, today_snap): name
             for name, fn in modules.items()
@@ -117,7 +119,7 @@ def do_report_only(today: date) -> dict:
             return {"error": "快照损坏"}
 
     results = {}
-    for name in ("finance", "news", "ai", "github"):
+    for name in ("finance", "news", "ai", "github", "clawhub"):
         results[name] = {
             "raw":    _load(snap_dir / f"{name}_raw.json",    {}),
             "claude": _load(snap_dir / f"{name}_claude.json", {"error": "无快照"}),

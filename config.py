@@ -82,6 +82,17 @@ ARXIV_API_URL = (
     "&sortBy=submittedDate&sortOrder=descending"
 )
 
+# ── ClawHub.ai ────────────────────────────────────────────
+CLAWHUB_BASE_URL = "https://clawhub.ai/api/v1"
+CLAWHUB_PM_QUERIES = [
+    "product manager", "product roadmap", "user research",
+    "product analytics", "requirement", "PRD",
+]
+CLAWHUB_FINANCE_QUERIES = [
+    "finance", "trading", "investment", "bank", "quantitative",
+    "fintech", "stock", "risk",
+]
+
 # ── GitHub Trending ───────────────────────────────────────
 GITHUB_TRENDING_URL  = "https://github.com/trending"
 GITHUB_TRENDING_WEEK = "https://github.com/trending?since=weekly"
