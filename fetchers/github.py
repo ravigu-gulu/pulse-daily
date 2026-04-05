@@ -1,11 +1,11 @@
-"""GitHub Trending 抓取：requests 优先，失败回退 Playwright。"""
+"""GitHub Trending 抓取 + PM 专项 + 金融行业项目搜索。"""
 import logging
 import re
 
 import requests
 from bs4 import BeautifulSoup
 
-from config import GITHUB_TRENDING_URL, GITHUB_TRENDING_WEEK, GITHUB_TOP_N
+from config import GITHUB_TRENDING_URL, GITHUB_TRENDING_WEEK, GITHUB_TOP_N, GITHUB_SEARCH_API
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,20 @@ HEADERS = {
         "Chrome/124.0.0.0 Safari/537.36"
     )
 }
+
+# GitHub Search 查询关键词
+GITHUB_PM_QUERIES = [
+    "product+management+tool",
+    "product+roadmap",
+    "user+research+tool",
+    "product+analytics",
+]
+GITHUB_FINANCE_QUERIES = [
+    "banking+open+source",
+    "quantitative+finance",
+    "fintech+platform",
+    "risk+management+finance",
+]
 
 CATEGORY_KEYWORDS = {
     "AI/ML":    ["ai","ml","llm","gpt","neural","model","diffusion","embedding","rag","inference"],
@@ -29,18 +43,57 @@ def fetch_github() -> dict:
     today = _fetch_trending(GITHUB_TRENDING_URL, "today")
     week  = _fetch_trending(GITHUB_TRENDING_WEEK, "week")
 
-    # 合并去重
+    # Trending 合并去重
     seen  = set()
-    items = []
+    trending = []
     for item in today + week:
         key = item["full_name"]
         if key not in seen:
             seen.add(key)
-            items.append(item)
+            trending.append(item)
 
     logger.info("  GitHub Trending: today=%d week=%d merged=%d",
-                len(today), len(week), len(items))
-    return {"items": items[:GITHUB_TOP_N]}
+                len(today), len(week), len(trending))
+
+    pm_items      = _fetch_search_repos(GITHUB_PM_QUERIES,      "pm")
+    finance_items = _fetch_search_repos(GITHUB_FINANCE_QUERIES, "finance")
+    logger.info("  GitHub PM=%d Finance=%d", len(pm_items), len(finance_items))
+
+    return {
+        "trending": trending[:GITHUB_TOP_N],
+        "pm":       pm_items,
+        "finance":  finance_items,
+    }
+
+
+def _fetch_search_repos(queries: list, label: str) -> list:
+    """用 GitHub Search API 搜索指定关键词，合并去重取前 10 条。"""
+    seen, items = set(), []
+    for q in queries:
+        try:
+            url = GITHUB_SEARCH_API.format(query=q)
+            resp = requests.get(url, headers=HEADERS, timeout=10)
+            if resp.status_code == 403:
+                logger.warning("  GitHub Search rate-limited (%s)", label)
+                break
+            resp.raise_for_status()
+            for repo in resp.json().get("items", [])[:5]:
+                full_name = repo.get("full_name", "")
+                if full_name in seen:
+                    continue
+                seen.add(full_name)
+                items.append({
+                    "name":        repo.get("name", ""),
+                    "full_name":   full_name,
+                    "url":         repo.get("html_url", ""),
+                    "description": (repo.get("description") or "")[:200],
+                    "language":    repo.get("language") or "",
+                    "stars":       repo.get("stargazers_count", 0),
+                    "label":       label,
+                })
+        except Exception as e:
+            logger.warning("  GitHub Search 失败(%s, %s): %s", label, q, e)
+    return items[:10]
 
 
 def _fetch_trending(url: str, period: str) -> list:

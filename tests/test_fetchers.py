@@ -135,6 +135,42 @@ class TestGithubCategorize:
         assert self.fn("random project xyz") == "其他"
 
 
+class TestGithubFetchSearchRepos:
+    def test_returns_list_on_success(self):
+        from fetchers.github import _fetch_search_repos
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"items": [
+            {"full_name": "owner/repo", "name": "repo", "html_url": "https://github.com/owner/repo",
+             "description": "A great tool", "language": "Python", "stargazers_count": 500}
+        ]}
+        with patch('fetchers.github.requests.get', return_value=mock_resp):
+            items = _fetch_search_repos(["pm+tool"], "pm")
+        assert len(items) == 1
+        assert items[0]["name"] == "repo"
+        assert items[0]["stars"] == 500
+
+    def test_rate_limited_returns_empty(self):
+        from fetchers.github import _fetch_search_repos
+        mock_resp = MagicMock()
+        mock_resp.status_code = 403
+        with patch('fetchers.github.requests.get', return_value=mock_resp):
+            items = _fetch_search_repos(["pm+tool"], "pm")
+        assert items == []
+
+    def test_deduplicates_across_queries(self):
+        from fetchers.github import _fetch_search_repos
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"items": [
+            {"full_name": "owner/same", "name": "same", "html_url": "https://github.com/owner/same",
+             "description": "dup", "language": "Go", "stargazers_count": 100}
+        ]}
+        with patch('fetchers.github.requests.get', return_value=mock_resp):
+            items = _fetch_search_repos(["query1", "query2"], "pm")
+        assert len(items) == 1  # deduplicated
+
+
 class TestGithubParseHtml:
     def test_parse_html_extracts_repos(self):
         from fetchers.github import _parse_html

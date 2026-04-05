@@ -199,51 +199,103 @@ def _ai_analysis(data: dict) -> str:
 </div>"""
 
 
-# ── GitHub 开源精选 ───────────────────────────────────────
+# ── GitHub 开源精选（三章节） ─────────────────────────────
 
 def _render_github(data: dict) -> str:
     raw    = data.get("raw", {})
     claude = data.get("claude", {})
     gpt    = data.get("gpt", {})
 
-    total = len(raw.get("items", []))
-    meta  = f'<p class="meta-info">今日 Trending 共 {total} 个项目，双模型各选 5 个精选</p>'
+    total_trending = len(raw.get("trending", raw.get("items", [])))
+    total_pm       = len(raw.get("pm", []))
+    total_finance  = len(raw.get("finance", []))
+    meta = (f'<p class="meta-info">Trending {total_trending} 个 · '
+            f'PM工具 {total_pm} 个 · 金融项目 {total_finance} 个</p>')
 
-    claude_html = _github_analysis(claude)
-    gpt_html    = _github_analysis(gpt)
-    return _section("⭐ GitHub 开源精选", meta + _dual_tab(claude_html, gpt_html, "github"))
+    # 子章节 1：Trending
+    trending_html = _subsection(
+        "🔥 GitHub Trending",
+        _dual_tab(
+            _github_trending(claude.get("trending", claude) if "trending" in claude else claude),
+            _github_trending(gpt.get("trending", gpt) if "trending" in gpt else gpt),
+            "github_trending"
+        )
+    )
+
+    # 子章节 2：PM 专项
+    pm_html = _subsection(
+        "🧩 产品经理专项推荐",
+        _dual_tab(
+            _github_picks(claude.get("pm_tools", {}), stars_key="stars"),
+            _github_picks(gpt.get("pm_tools", {}), stars_key="stars"),
+            "github_pm"
+        )
+    )
+
+    # 子章节 3：金融行业
+    finance_html = _subsection(
+        "🏦 金融/银行业项目推荐",
+        _dual_tab(
+            _github_picks(claude.get("finance_tools", {}), stars_key="stars"),
+            _github_picks(gpt.get("finance_tools", {}), stars_key="stars"),
+            "github_finance"
+        )
+    )
+
+    return _section("⭐ GitHub 开源精选", meta + trending_html + pm_html + finance_html)
 
 
-def _github_analysis(data: dict) -> str:
+def _github_trending(data: dict) -> str:
     if "error" in data:
         return f'<p class="err-msg">分析失败：{_e(str(data["error"]))}</p>'
-
-    picks   = data.get("picks", [])
-    trend   = data.get("trend_summary", "")
-    hotdir  = data.get("hot_direction", "")
-
-    picks_html = ""
-    for p in picks:
-        stars = p.get("stars_today", 0)
-        rating = "⭐" * max(1, min(_safe_int(p.get("rating"), 3), 5))
-        cat    = p.get("category", "")
-        picks_html += f"""
-<div class="repo-card">
-  <div class="repo-header">
-    <a href="{_e(p.get('url',''))}" target="_blank" class="repo-name">{_e(p.get('name',''))}</a>
-    <span class="repo-cat">{_e(cat)}</span>
-    <span class="repo-stars">+{stars}⭐</span>
-  </div>
-  <div class="repo-desc">{_e(p.get('description',''))}</div>
-  <div class="repo-meta">{rating} · 场景：{_e(p.get('use_case',''))}</div>
-</div>"""
-
+    picks  = data.get("picks", [])
+    trend  = data.get("trend_summary", "")
+    hotdir = data.get("hot_direction", "")
+    picks_html = _repo_cards(picks, stars_key="stars_today", show_cat=True)
     return f"""
 <div class="analysis-block">
   {picks_html}
   <div class="summary-box"><strong>趋势：</strong>{_e(trend)}</div>
   <div class="watch-box">🔥 最热方向：{_e(hotdir)}</div>
 </div>"""
+
+
+def _github_picks(data: dict, stars_key: str = "stars") -> str:
+    if not data or "error" in data:
+        err = data.get("error", "") if data else ""
+        return f'<p class="err-msg">分析失败：{_e(str(err))}</p>' if err else '<p class="na">暂无数据</p>'
+    picks   = data.get("picks", [])
+    summary = data.get("summary", "")
+    picks_html = _repo_cards(picks, stars_key=stars_key, show_cat=False)
+    return f"""
+<div class="analysis-block">
+  {picks_html}
+  <div class="summary-box"><strong>推荐语：</strong>{_e(summary)}</div>
+</div>"""
+
+
+def _repo_cards(picks: list, stars_key: str = "stars_today", show_cat: bool = True) -> str:
+    html = ""
+    for p in picks:
+        stars  = p.get(stars_key, p.get("stars", 0))
+        rating = "⭐" * max(1, min(_safe_int(p.get("rating"), 3), 5))
+        cat    = f'<span class="repo-cat">{_e(p.get("category",""))}</span>' if show_cat else ""
+        stars_label = f"+{stars}⭐" if stars_key == "stars_today" else f"★{stars:,}"
+        html += f"""
+<div class="repo-card">
+  <div class="repo-header">
+    <a href="{_e(p.get('url',''))}" target="_blank" class="repo-name">{_e(p.get('name',''))}</a>
+    {cat}
+    <span class="repo-stars">{stars_label}</span>
+  </div>
+  <div class="repo-desc">{_e(p.get('description',''))}</div>
+  <div class="repo-meta">{rating} · 场景：{_e(p.get('use_case',''))}</div>
+</div>"""
+    return html
+
+
+def _subsection(title: str, content: str) -> str:
+    return f'<div class="subsection"><h3>{title}</h3>{content}</div>'
 
 
 # ── 通用辅助 ──────────────────────────────────────────────
@@ -365,6 +417,9 @@ h4{{font-size:13px;font-weight:600;color:#444;margin:14px 0 6px}}
 .research-summary{{font-size:12px;color:#555;line-height:1.5}}
 .research-source{{font-size:11px;color:#999;margin-top:3px;display:inline-block}}
 
+/* GitHub 子章节 */
+.subsection{{margin-bottom:24px}}
+.subsection h3{{font-size:15px;font-weight:700;color:#333;margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid #f0f0f0}}
 /* GitHub 项目卡片 */
 .repo-card{{padding:12px 16px;margin-bottom:10px;border:1px solid #f0f0f0;border-radius:8px;background:#fafafa}}
 .repo-header{{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}}

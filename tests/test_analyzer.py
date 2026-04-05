@@ -139,7 +139,11 @@ class TestBuildPrompt:
         assert "AI领域" in prompt
 
     def test_github_prompt_contains_data(self):
-        data = {"items": [{"name": "cool-repo", "stars_today": 500}]}
+        data = {
+            "trending": [{"name": "cool-repo", "url": "", "description": "", "language": "Python",
+                          "stars": 500, "stars_today": 100, "category": "AI/ML"}],
+            "pm": [], "finance": [],
+        }
         prompt = _build_prompt("github", data)
         assert "cool-repo" in prompt
         assert "开源社区" in prompt

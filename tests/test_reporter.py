@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from reporter import _safe_int, _e, _fmt_price, _finance_analysis, _news_analysis, _ai_analysis, _github_analysis, build_report
+from reporter import _safe_int, _e, _fmt_price, _finance_analysis, _news_analysis, _ai_analysis, _github_trending, _github_picks, _repo_cards, build_report
 from datetime import date
 
 
@@ -199,61 +199,103 @@ class TestAiAnalysis:
 
 
 class TestGithubAnalysis:
-    def _good_data(self):
+    def _trending_data(self):
         return {
             "picks": [
                 {"name": "awesome-llm", "url": "https://github.com/a/awesome-llm",
                  "description": "LLM 工具集合", "use_case": "AI开发",
                  "stars_today": 500, "rating": 5, "category": "AI/ML"},
-                {"name": "fast-api-tool", "url": "https://github.com/b/fast-api-tool",
-                 "description": "API 开发工具", "use_case": "后端开发",
-                 "stars_today": 200, "rating": 3, "category": "开发工具"},
             ],
             "trend_summary": "AI 工具热度持续",
             "hot_direction": "RAG 框架"
         }
 
-    def test_renders_picks(self):
-        html = _github_analysis(self._good_data())
+    def _pm_data(self):
+        return {
+            "picks": [
+                {"name": "pm-tool", "url": "https://github.com/a/pm-tool",
+                 "description": "产品需求管理工具", "use_case": "需求管理",
+                 "stars": 800, "rating": 4},
+            ],
+            "summary": "适合产品经理的开源工具"
+        }
+
+    def _finance_data(self):
+        return {
+            "picks": [
+                {"name": "bank-api", "url": "https://github.com/b/bank-api",
+                 "description": "开放银行API平台", "use_case": "银行系统集成",
+                 "stars": 1200, "rating": 5},
+            ],
+            "summary": "金融行业优质开源项目"
+        }
+
+    def _full_claude_data(self):
+        return {
+            "trending": self._trending_data(),
+            "pm_tools": self._pm_data(),
+            "finance_tools": self._finance_data(),
+        }
+
+    def test_renders_trending_picks(self):
+        from reporter import _github_trending
+        html = _github_trending(self._trending_data())
         assert "awesome-llm" in html
         assert "LLM 工具集合" in html
 
-    def test_renders_trend(self):
-        html = _github_analysis(self._good_data())
+    def test_renders_trending_summary(self):
+        from reporter import _github_trending
+        html = _github_trending(self._trending_data())
         assert "AI 工具热度持续" in html
-
-    def test_renders_hot_direction(self):
-        html = _github_analysis(self._good_data())
         assert "RAG 框架" in html
 
+    def test_renders_pm_picks(self):
+        from reporter import _github_picks
+        html = _github_picks(self._pm_data())
+        assert "pm-tool" in html
+        assert "产品需求管理工具" in html
+
+    def test_renders_finance_picks(self):
+        from reporter import _github_picks
+        html = _github_picks(self._finance_data())
+        assert "bank-api" in html
+        assert "开放银行API平台" in html
+
+    def test_renders_finance_stars_total(self):
+        from reporter import _github_picks
+        html = _github_picks(self._finance_data(), stars_key="stars")
+        assert "1,200" in html
+
     def test_invalid_rating_string_doesnt_crash(self):
-        data = self._good_data()
-        data["picks"][0]["rating"] = "excellent"  # 非数字
-        html = _github_analysis(data)
-        assert html  # 不崩溃
+        from reporter import _github_trending
+        data = self._trending_data()
+        data["picks"][0]["rating"] = "excellent"
+        html = _github_trending(data)
+        assert html
         assert "⭐" in html
 
     def test_rating_clamped_to_1_5(self):
-        data = self._good_data()
-        data["picks"][0]["rating"] = 99
-        html = _github_analysis(data)
-        assert "⭐⭐⭐⭐⭐" in html  # 最多5颗
+        from reporter import _repo_cards
+        picks = [{"name": "r", "url": "", "description": "", "use_case": "", "rating": 99}]
+        html = _repo_cards(picks)
+        assert "⭐⭐⭐⭐⭐" in html
 
-    def test_missing_rating_uses_default(self):
-        data = self._good_data()
-        del data["picks"][0]["rating"]
-        html = _github_analysis(data)
-        assert "⭐" in html
+    def test_pm_empty_data_shows_na(self):
+        from reporter import _github_picks
+        html = _github_picks({})
+        assert "暂无" in html
 
     def test_error_shows_message(self):
-        html = _github_analysis({"error": "模型异常"})
+        from reporter import _github_trending
+        html = _github_trending({"error": "模型异常"})
         assert "分析失败" in html
 
-    def test_xss_escaped_in_url(self):
-        data = self._good_data()
-        data["picks"][0]["name"] = '<img src=x onerror=alert(1)>'
-        html = _github_analysis(data)
-        assert "<img" not in html
+    def test_xss_escaped(self):
+        from reporter import _github_trending
+        data = self._trending_data()
+        data["picks"][0]["name"] = '<script>alert(1)</script>'
+        html = _github_trending(data)
+        assert "<script>" not in html
 
 
 class TestBuildReport:
@@ -285,8 +327,12 @@ class TestBuildReport:
                 "gpt": {"error": "超时"},
             },
             "github": {
-                "raw": {"items": []},
-                "claude": {"picks": [], "trend_summary": "趋势", "hot_direction": "AI"},
+                "raw": {"trending": [], "pm": [], "finance": []},
+                "claude": {
+                    "trending": {"picks": [], "trend_summary": "趋势", "hot_direction": "AI"},
+                    "pm_tools": {"picks": [], "summary": "PM工具"},
+                    "finance_tools": {"picks": [], "summary": "金融工具"},
+                },
                 "gpt": {"error": "超时"},
             },
         }

@@ -86,3 +86,7 @@ ARXIV_API_URL = (
 GITHUB_TRENDING_URL  = "https://github.com/trending"
 GITHUB_TRENDING_WEEK = "https://github.com/trending?since=weekly"
 GITHUB_TOP_N = 25
+GITHUB_SEARCH_API = (
+    "https://api.github.com/search/repositories"
+    "?q={query}&sort=stars&order=desc&per_page=5"
+)
